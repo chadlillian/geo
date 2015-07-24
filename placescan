@@ -1,0 +1,94 @@
+#!/home/chad/anaconda/bin/python
+import	numpy as np
+import	matplotlib.pyplot as plt
+import	sys
+import	caffe
+import	time
+import	os
+import	glob
+import	pickle
+import	threading
+import	Queue
+from pymongo import MongoClient
+import	requests
+
+class caffeExec:
+	def	__init__(self):
+		# Make sure that caffe is on the python path:
+		self.caffe_root	='/home/chad/caffe/'  # this file is expected to be in {caffe_root}/examples
+
+		pcnn_MODEL_FILE	=self.caffe_root+'/models/placesCNN/places205CNN_deploy.prototxt'
+		pcnn_PRETRAINED	=self.caffe_root+'/models/placesCNN/places205CNN_iter_300000.caffemodel'
+		pcnn_CATEGORIES	=self.caffe_root+'/models/placesCNN/categoryIndex_places205.csv'
+		pcnn_length		=205
+		hcnn_MODEL_FILE	=self.caffe_root+'/models/hybridCNN/hybridCNN_deploy.prototxt'
+		hcnn_PRETRAINED	=self.caffe_root+'/models/hybridCNN/hybridCNN_iter_700000.caffemodel'
+		hcnn_CATEGORIES	=self.caffe_root+'/models/hybridCNN/categoryIndex_hybridCNN.csv'
+		hcnn_length		=1183
+
+		pcnn_CATEGORIES	=[q.split()[0] for q in open(pcnn_CATEGORIES).readlines()]
+		hcnn_CATEGORIES	=[q.split()[0] for q in open(hcnn_CATEGORIES).readlines()]
+
+		self.models				={'placesCNN':{'model':pcnn_MODEL_FILE, 'pretrained':pcnn_PRETRAINED, 'len':pcnn_length, 'categories':pcnn_CATEGORIES},
+								  'hybridCNN':{'model':hcnn_MODEL_FILE, 'pretrained':hcnn_PRETRAINED, 'len':hcnn_length, 'categories':hcnn_CATEGORIES}}
+		self.client	=MongoClient()
+
+		
+	def	setup(self,model,database,collection):
+		# Set the right path to your model definition file, pretrained model weights,
+		# and the image you would like to classify.
+		MODEL_FILE		=self.models[model]['model']
+		PRETRAINED		=self.models[model]['pretrained']
+		self.cnnlen		=self.models[model]['len']
+		self.categories	=self.models[model]['categories']
+		
+		numpymean	=np.load(self.caffe_root + 'python/caffe/imagenet/ilsvrc_2012_mean.npy').mean(1).mean(1)
+		caffe.set_mode_cpu()
+		self.net 		=caffe.Classifier(MODEL_FILE, PRETRAINED, mean=numpymean, channel_swap=(2,1,0), raw_scale=255, image_dims=(256, 256))
+
+		self.db			=self.client[database]
+		self.collection =self.db[collection]
+		self.images		=self.collection.find({'prediction':{'$exists':False}})
+
+	def	predictMongoDB(self):
+		sf	={'cnnurl':0,'cnnfail':0,'mongoupdate':0,'mongofail':0}
+		number	=self.images.count()
+		for i,image in enumerate(self.images):
+			try:
+				caffeImages			=[caffe.io.load_image(image['photo_file_url']) ]
+				sf['cnnurl']		=sf['cnnurl']+1
+				prediction			=self.net.predict(caffeImages)[0].tolist()
+				prediction			=dict(zip(self.categories,prediction))
+				try:
+					a		=self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
+					sf['mongoupdate']	=sf['mongoupdate']+1
+				except:
+					sf['mongofail']		=sf['mongofail']+1
+
+			except:
+				sf['cnnfail']	=sf['cnnfail']+1
+
+			print '%5i/%5i %80s cnnurl %5i cnnfail %5i mongoupdate %5i mongofail %5i'%tuple([i,number,image['photo_file_url'],sf['cnnurl'],sf['cnnfail'],sf['mongoupdate'],sf['mongofail']])
+
+
+#				prediction			=self.net.predict(caffeImages)[0].tolist()
+#				prediction			=dict(zip(self.categories,prediction))
+#				a	=self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
+#				print a
+#
+#				sf[0]	=sf[0]+1
+#				print '%5i/%5i %80s success %5i fail %5i'%tuple([i,number,image['photo_file_url']]+sf)
+#			except:
+#				image_url			=open('temp.jpg','w').write(requests.get(image['photo_file_url']).content)
+#				caffeImages			=[caffe.io.load_image('temp.jpg') ]
+#				prediction			=self.net.predict(caffeImages)[0].tolist()
+#				prediction			=dict(zip(self.categories,prediction))
+#				self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
+#				sf[1]	=sf[1]+1
+#				print '%5i/%5i %80s success %5i fail %5i'%tuple([i,number,image['photo_file_url']]+sf)
+
+co		=caffeExec()
+#co.setup('placesCNN','geo','panoramio_barcelona')
+co.setup('placesCNN','geo','panoramio_popular')
+co.predictMongoDB()
+

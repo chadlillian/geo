@@ -1,0 +1,93 @@
+#!/home/chad/anaconda/bin/python
+import	numpy as np
+import	matplotlib.pyplot as plt
+import	sys
+import	urllib2
+import	urllib
+import	json
+from pymongo import MongoClient
+
+class	panoramioQuery:
+	def	__init__(self):
+		self.segmentsize	=100
+	
+	def	setRectangle(self,mins,maxs,segsLon,segsLat):
+		self.minLat		=mins[0]
+		self.minLon		=mins[1]
+		self.maxLat		=maxs[0]
+		self.maxLon		=maxs[1]
+
+		self.segsLon	=segsLon
+		self.segsLat	=segsLat
+	
+	def	setDatabase(self,db,col):
+		self.client	=MongoClient()
+		self.db		=self.client[db]
+		self.col	=self.db[col]
+
+	def	getJsonRectangle(self,mins,maxs):
+		minLat	=mins[0]
+		minLon	=mins[1]
+		maxLat	=maxs[0]
+		maxLon	=maxs[1]
+		#rest	='http://www.panoramio.com/map/get_panoramas.php?set=full&size=original&from=%i&to=%i&minx=%f&miny=%f&maxx=%f&maxy=%f'
+		rest	='http://www.panoramio.com/map/get_panoramas.php?set=public&size=original&from=%i&to=%i&minx=%f&miny=%f&maxx=%f&maxy=%f'
+		r1		=rest%(1,2,minLon,minLat,maxLon,maxLat)
+		f		=urllib2.urlopen(r1).read()
+		a		=json.loads(f)
+		count	=a['count']
+		segmentsize	=100
+	
+		photos	=[]
+		hasmore	=True
+		i	=0
+		while hasmore:
+			start	=segmentsize*i
+			end		=segmentsize*(i+1)
+			r	=rest%(start,end,minLon,minLat,maxLon,maxLat)
+			f	=urllib2.urlopen(r).read()
+			a	=json.loads(f)
+
+			photos.extend(a['photos'])
+			hasmore	=a['has_more']
+			i	=i+1
+	
+		return	photos
+		
+	
+	def	query(self):
+		photourls	={}
+	
+		fracLon	=1.0/(self.segsLon)
+		incrLon	=fracLon/2.0
+		fracLat	=1.0/(self.segsLat)
+		incrLat	=fracLat/2.0
+
+		xn		=self.segsLon*2-1
+		yn		=self.segsLat*2-1
+		frmt	='%3i %3i '+'['+'%5.3f '*4+']'+'['+'%5.3f '*4+']'+'%7i '*2
+		for xi in range(xn):
+			for yi in range(yn):
+				rminLon	=xi*incrLon*(self.maxLon-self.minLon)+self.minLon
+				rmaxLon	=fracLon*(self.maxLon-self.minLon)+rminLon
+	
+				rminLat	=yi*incrLat*(self.maxLat-self.minLat)+self.minLat
+				rmaxLat	=fracLat*(self.maxLat-self.minLat)+rminLat
+	
+				rphotos		=self.getJsonRectangle([rminLat,rminLon],[rmaxLat,rmaxLon])
+				[x.update({'_id':x['photo_id']}) for x in rphotos]
+				for photo in rphotos:
+					try:
+						self.col.insert(photo)
+					except: 
+						pass
+	
+				print frmt%(xi,yi,self.minLat,self.minLon,self.maxLat,self.maxLon,rminLat,rminLon,rmaxLat,rmaxLon,len(rphotos),self.col.count())
+		
+pdb	=panoramioQuery()
+#pdb.setRectangle(-12,34,44,72,50,50)
+#pdb.setRectangle([34,-12],[72,44],50,50)
+pdb.setRectangle([41.3,2.1],[41.4,2.2],2,2)
+pdb.setDatabase('geo','panoramio_barcelona')
+pdb.query()
+#multipleRectangles(-2,42,12,48,'test3.csv')
