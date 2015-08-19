@@ -131,8 +131,8 @@ col         ='Liechtenstein'
 categoriesfile  ='../../caffe/models/placesCNN/categoryIndex_places205.csv'
 categories  =[\
 '/m/mountain',\
-'/c/coast',\
 '/s/shopfront',\
+'/c/coast',\
 '/r/ruin',\
 '/r/river',\
 '/r/restaurant_patio',\
