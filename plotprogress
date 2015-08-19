@@ -1,0 +1,97 @@
+#!/home/chad/anaconda/bin/python
+from	scipy	import	stats
+from	scipy.spatial import ConvexHull
+from 	mpl_toolkits.basemap import Basemap
+import	matplotlib.pyplot as plt
+import	matplotlib.figure as pltfig
+import	numpy as np
+import	sys
+from 	pymongo import MongoClient
+import	math
+import	pylab	as P
+from sklearn.cluster import DBSCAN
+
+class	plotstuff:
+	def	__init__(self):
+		self.client	=MongoClient()
+
+	def	setupDB(self,db,col):
+		self.db		=self.client[db]
+		self.col	=self.db[col]
+
+	def	queryDB(self):
+		self.docsExists		=[q for q in self.col.find({'prediction':{'$exists':True}})]
+		self.docsDNExist	=[q for q in self.col.find({'prediction':{'$exists':False}})]
+
+		latlon			=[(q['latitude'],q['longitude']) for q in self.docsExists]
+		if len(latlon)>0:
+			lats,lons		=zip(*latlon)
+			self.latsE		=lats
+			self.lonsE		=lons
+		else:
+			self.latsE		=[]
+			self.lonsE		=[]
+
+		latlon			=[(q['latitude'],q['longitude']) for q in self.docsDNExist]
+		lats,lons		=zip(*latlon)
+		if len(latlon)>0:
+			lats,lons		=zip(*latlon)
+			self.latsN		=lats
+			self.lonsN		=lons
+		else:
+			self.latsN		=[]
+			self.lonsN		=[]
+		self.minlat		=min(self.latsN+self.latsE)
+		self.maxlat		=max(self.latsN+self.latsE)
+		self.minlon		=min(self.lonsN+self.lonsE)
+		self.maxlon		=max(self.lonsN+self.lonsE)
+
+	def	plotData(self):
+		latdelta		=-self.minlat+self.maxlat
+		londelta		=-self.minlon+self.maxlon
+		latrect			=[self.minlat-latdelta,self.maxlat+latdelta]
+		lonrect			=[self.minlon-londelta,self.maxlon+londelta]
+		lat0			=np.mean(latrect)
+		lon0			=np.mean(lonrect)
+		mapq= Basemap(projection='merc', lat_0 = lat0, lon_0 = lon0,resolution = 'h', area_thresh = 0.1,llcrnrlon=lonrect[0], llcrnrlat=latrect[0], urcrnrlon=lonrect[1], urcrnrlat=latrect[1])
+		mapq.shadedrelief()
+		mapq.drawmapboundary()
+		if len(self.lonsE)>0:
+			x,y	=mapq(self.lonsE,self.latsE)
+			mapq.scatter(x,y,marker='.',color='c')#,alpha=0.1)
+		print len(x)
+		if len(self.lonsN)>0:
+			x,y	=mapq(self.lonsN,self.latsN)
+			mapq.scatter(x,y,marker='.',color='k')#,alpha=0.1)
+		print len(x)
+
+		plt.show()
+
+categoriesfile	='../../caffe/models/placesCNN/categoryIndex_places205.csv'
+category	='/c/cathedral/outdoor'
+category	='/a/airport_terminal'
+category	='/t/train_railway'
+category	='/o/ocean'
+category	='/b/basilica'
+category	='/m/mountain'
+category	='/o/office_building'
+cutoff		=0.03
+db			='geo'
+
+if 0:
+	a	=plotstuff()
+	a.setupDB(db,col)
+	a.queryDB()
+	b	=a.getCategoryClusters(category,0.001,3,cutoff)
+	a.getBoundingPolygon(category,cutoff,b)
+	category	='/o/ocean'
+	b	=a.getCategoryClusters(category,0.001,3,cutoff)
+	a.getBoundingPolygon(category,cutoff,b)
+else:
+	col	='panoramio_popular'
+	col	='panoramio'
+	a	=plotstuff()
+	a.setupDB(db,col)
+	a.queryDB()
+	a.plotData()
+	

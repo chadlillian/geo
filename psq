@@ -1,0 +1,38 @@
+#!/home/chad/anaconda/bin/python
+import	numpy as np
+import	matplotlib.pyplot as plt
+import	caffe
+import	requests
+
+url		='http://static2.bareka.com/photos/medium/505229.jpg'
+url		='http://static.panoramio.com/photos/original/108601822.jpg'
+url		='http://static.panoramio.com/photos/original/74325195.jpg'
+url		='http://static.panoramio.com/photos/original/20971520.jpg'
+
+def	setup():
+	caffe_root	='/home/chad/caffe/'  # this file is expected to be in {caffe_root}/examples
+	MODEL_FILE		=caffe_root+'/models/placesCNN/places205CNN_deploy.prototxt'
+	PRETRAINED		=caffe_root+'/models/placesCNN/places205CNN_iter_300000.caffemodel'
+	CATEGORIES		=caffe_root+'/models/placesCNN/categoryIndex_places205.csv'
+	CATEGORIES		=[q.split()[0] for q in open(CATEGORIES).readlines()]
+	length			=len(CATEGORIES)
+
+	numpymean		=np.load(caffe_root + 'python/caffe/imagenet/ilsvrc_2012_mean.npy').mean(1).mean(1)
+	caffe.set_mode_cpu()
+	net 				=caffe.Classifier(MODEL_FILE, PRETRAINED, mean=numpymean, channel_swap=(2,1,0), raw_scale=255, image_dims=(256, 256))
+
+	return	{'net':net,'categories':CATEGORIES}
+
+def	getPhoto(url):
+	image_url			=open('temp.jpg','w').write(requests.get(url).content)
+
+def	classifyPhoto(net,url,categories):
+	caffeImages			=[caffe.io.load_image(url) ]
+	prediction			=map(float,net.predict(caffeImages)[0].tolist())
+	prediction          =dict(zip(categories,prediction))
+	print prediction
+
+
+#getPhoto(url)
+su	=setup()
+classifyPhoto(su['net'],url,su['categories'])

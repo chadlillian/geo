@@ -11,6 +11,17 @@ import	threading
 import	Queue
 from pymongo import MongoClient
 import	requests
+import	dashboard	as	dash
+import	datetime
+import	signal
+import	cStringIO	as	StringIO
+import	urllib
+#	https://github.com/BVLC/caffe/issues/438
+from skimage import io; io.use_plugin('matplotlib')
+
+def	handler(signum,frame):
+	print 'Process Timed Out ',signum
+	raise IOError("Image download timed out")
 
 class caffeExec:
 	def	__init__(self):
@@ -32,6 +43,8 @@ class caffeExec:
 		self.models				={'placesCNN':{'model':pcnn_MODEL_FILE, 'pretrained':pcnn_PRETRAINED, 'len':pcnn_length, 'categories':pcnn_CATEGORIES},
 								  'hybridCNN':{'model':hcnn_MODEL_FILE, 'pretrained':hcnn_PRETRAINED, 'len':hcnn_length, 'categories':hcnn_CATEGORIES}}
 		self.client	=MongoClient()
+		self.monitor	=dash.dashboard()
+		#self.monitor.setURL('http://localhost:8080/')
 
 		
 	def	setup(self,model,database,collection):
@@ -48,47 +61,64 @@ class caffeExec:
 
 		self.db			=self.client[database]
 		self.collection =self.db[collection]
-		self.images		=self.collection.find({'prediction':{'$exists':False}})
+		#self.images		=self.collection.find({'prediction':{'$exists':False}},timeout=False)
+		qry	={"$or":[{'prediction':{'$exists':False}},{'prediction':0}]}
+		self.images		=self.collection.find(qry,timeout=False)
 
 	def	predictMongoDB(self):
-		sf	={'cnnurl':0,'cnnfail':0,'mongoupdate':0,'mongofail':0}
+		sf	={'predict':0,'fail':0}
 		number	=self.images.count()
 		for i,image in enumerate(self.images):
+			start	=datetime.datetime.now()
 			try:
+				signal.signal(signal.SIGALRM,handler)
+				signal.alarm(300)
+
 				caffeImages			=[caffe.io.load_image(image['photo_file_url']) ]
-				sf['cnnurl']		=sf['cnnurl']+1
+
+				signal.alarm(0)
 				prediction			=self.net.predict(caffeImages)[0].tolist()
 				prediction			=dict(zip(self.categories,prediction))
-				try:
-					a		=self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
-					sf['mongoupdate']	=sf['mongoupdate']+1
-				except:
-					sf['mongofail']		=sf['mongofail']+1
+				start2	=datetime.datetime.now()
 
+				a		=self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
+				sf['predict']	=sf['predict']+1
 			except:
-				sf['cnnfail']	=sf['cnnfail']+1
+				a		=self.collection.update({'_id':image['_id']},{"$set":{'prediction':0}})
+				sf['fail']	=sf['fail']+1
 
-			print '%5i/%5i %80s cnnurl %5i cnnfail %5i mongoupdate %5i mongofail %5i'%tuple([i,number,image['photo_file_url'],sf['cnnurl'],sf['cnnfail'],sf['mongoupdate'],sf['mongofail']])
+			end	=datetime.datetime.now()
+			elaptime	=end-start
+			elaptime	=elaptime.seconds+elaptime.microseconds*1e-6
 
+			print '%5i/%5i %80s predict %5i fail %5i [%s %f]'%tuple([i,number,image['photo_file_url'],sf['predict'],sf['fail'],start.strftime('%X'),elaptime])
+			self.monitor.update({'value':i,'application':'X'})
 
-#				prediction			=self.net.predict(caffeImages)[0].tolist()
-#				prediction			=dict(zip(self.categories,prediction))
-#				a	=self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
-#				print a
-#
-#				sf[0]	=sf[0]+1
-#				print '%5i/%5i %80s success %5i fail %5i'%tuple([i,number,image['photo_file_url']]+sf)
-#			except:
-#				image_url			=open('temp.jpg','w').write(requests.get(image['photo_file_url']).content)
-#				caffeImages			=[caffe.io.load_image('temp.jpg') ]
-#				prediction			=self.net.predict(caffeImages)[0].tolist()
-#				prediction			=dict(zip(self.categories,prediction))
-#				self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
-#				sf[1]	=sf[1]+1
-#				print '%5i/%5i %80s success %5i fail %5i'%tuple([i,number,image['photo_file_url']]+sf)
+	def	scanImages(self):
+		for i,image in enumerate(self.images):
+			imageurl		=image['photo_file_url']
+			print image
+			signal.signal(signal.SIGALRM,handler)
+			signal.alarm(5)
+			try:
+				caffeImages			=[caffe.io.load_image(imageurl)]
+				flag	='success'
+			except:
+				flag	='fail'
+
+			signal.alarm(0)
+
+			print i,flag,image['_id'],image['photo_file_url']
+		
 
 co		=caffeExec()
 #co.setup('placesCNN','geo','panoramio_barcelona')
-co.setup('placesCNN','geo','panoramio_popular')
+#co.setup('placesCNN','geo','panoramio_popular')
+#co.setup('placesCNN','geo','Singapore')
+#co.setup('placesCNN','geo','Monaco')
+#co.setup('placesCNN','geo','San Marino')
+#co.setup('placesCNN','geo','Liechtenstein')
+col	=sys.argv[1].decode('utf-8')
+co.setup('placesCNN','geo',col)
 co.predictMongoDB()
-
+#co.scanImages()

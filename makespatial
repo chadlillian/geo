@@ -1,0 +1,36 @@
+#!/home/chad/anaconda/bin/python
+import	numpy	as	np
+import	scipy	as	sp
+from	scipy.spatial	import	Delaunay
+import	matplotlib.pyplot as plt
+
+#lines	=open('europe2.csv').readlines()
+lines	=open('test2hcnn.csv').readlines()
+N		=1
+
+coords	=[map(float,q.split()[:2]) for q in lines]
+#cnn		=[map(float,q.split()[3:]) for q in lines]
+
+cnn		=[]
+for line in lines:
+	qline	=map(float,line.split()[3:])
+	if len(qline)==0:
+		qline	=[0.0]*205
+	cnn.append(qline)
+
+coordsdec	=coords[::N]
+cnndec		=cnn[::N]
+
+npcoords	=np.array(coordsdec)
+npcnn		=np.array(cnndec)
+print npcoords.shape, npcnn.shape
+tri			=Delaunay(npcoords)
+
+#plt.triplot(npcoords[:,1], npcoords[:,0], tri.simplices.copy())
+#plt.scatter(npcoords[:,1], npcoords[:,0], c=npcnn[:,40], edgecolors='none')
+plt.pcolormesh(npcoords[:,1], npcoords[:,0], npcnn[:,40])
+plt.imshow(heatmap)
+plt.show()
+
+#a	=tri.find_simplex(npcoords[:1000,:])
+#print a

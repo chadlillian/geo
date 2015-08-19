@@ -1,0 +1,110 @@
+#!/home/chad/anaconda/bin/python
+import	numpy				as np
+import	matplotlib.pyplot	as plt
+import	matplotlib.image	as	mpimg
+import	sys
+import	random
+import	math
+from	sklearn.cluster			import	KMeans
+from	sklearn.cluster			import	DBSCAN
+from	sklearn.cluster			import	AgglomerativeClustering
+from	sklearn.decomposition	import	PCA
+
+def	testPCA():
+	N	=1000
+	n	=5
+	M	=20
+	ncom	=5
+	w	=np.random.rand(n,M)
+	
+	a	=np.matrix([w[i] for i in np.random.randint(0,n,N)])
+	a	=a+0.5*np.random.rand(N,M)
+	print a.shape
+	pca	=PCA(n_components=ncom)
+	pca.fit(a)
+	print pca.explained_variance_ratio_
+	b	=pca.transform(a)
+	
+	area	=10*(b[:,2]-min(b[:,2])+1)
+	area	=np.multiply(area,area)
+	plt.scatter(b[:,0],b[:,1],s=area,c=b[:,3],lw=0)
+	plt.show()
+
+def	getCSVData(filename,sample):
+	lines	=open(filename).readlines()
+	coords	=[]
+	data	=[]
+	combined	=[]
+	imid	=[]
+	for line in lines[::sample]:
+		qline		=line.split()
+		qcoords		=map(float,qline[:2])
+		photoid		=int(qline[2])
+		photodata	=map(float,qline[3:])
+
+		if len(qline)>4:
+			coords.append(qcoords)
+			data.append(photodata)
+			combined.append(qcoords+photodata)
+			imid.append(photoid)
+	
+	return	{'data':np.matrix(data), 'coords':np.matrix(coords), 'combined':np.matrix(combined), 'photoid':imid}
+
+def	pcaTheData(data,ncom):
+	pca	=PCA(n_components=ncom)
+	pca.fit(data['data'])
+	b	=pca.transform(data['data'])
+	return	b
+
+def	plotThePCA(data,pca):
+	fig,axes	=plt.subplots(2,4)
+	for i,ax in enumerate(axes.flat):
+		color	=pca[:,i]
+		ax.scatter(data['coords'][:,1],data['coords'][:,0],c=color,lw=0)
+	plt.show()
+	
+def	klusterTheData(data,k):
+	kmeans	=KMeans(init='k-means++',n_clusters=k)
+	kmeans.fit(data)
+	labels	=kmeans.labels_
+	return labels
+
+def	dbscanClusterTheData(data):
+	db	=DBSCAN(eps=9.3, min_samples=1).fit(data)
+	labels	=db.labels_
+	print 'number of labels:',len(set(labels))
+	return labels
+
+def	agglomerativeClusterTheData(data,link,n):
+	cl	=AgglomerativeClustering(linkage=link, n_clusters=n).fit(data)
+	labels	=cl.labels_
+	return	labels
+	
+def	plotTheKlusters(data,labels):
+	plt.scatter(data['coords'][:,1],data['coords'][:,0],c=labels,lw=0)
+	plt.show()
+	
+def	showClusteredImages(data,labels):
+	labelids	=list(set(labels))
+	numlabels	=len(labelids)
+	n	=numlabels
+	m	=5
+	fig,axes	=plt.subplots(n,m,subplot_kw={'xticks': [], 'yticks': []})
+	for r,row in enumerate(axes):
+		labelnum	=np.argwhere(labels==r)[:m]
+		for c,cel in enumerate(row):
+			#print 'r=%i, c=%i'%(r,c)
+			photoid	=data['photoid'][labelnum[c]]
+			image	=mpimg.imread('images/%i.jpg'%(photoid))
+			cel.imshow(image)
+			cel.set_title('label=%i'%(r))
+
+	plt.show()
+	
+d	=getCSVData('test2hcnn.csv',10)
+pca	=pcaTheData(d,9)
+labels	=klusterTheData(pca,12)
+#labels	=dbscanClusterTheData(pca)
+#labels	=agglomerativeClusterTheData(pca,'average',5)
+#plotTheKlusters(d,labels)
+showClusteredImages(d,labels)

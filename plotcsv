@@ -1,267 +1,310 @@
 #!/home/chad/anaconda/bin/python
-from	scipy	import	stats
-from	scipy.spatial import ConvexHull
-from 	mpl_toolkits.basemap import Basemap
-import	matplotlib.pyplot as plt
-import	matplotlib.figure as pltfig
-import	numpy as np
-import	sys
-from 	pymongo import MongoClient
-import	math
-import	pylab	as P
+from    scipy   import  stats
+from    scipy.spatial import ConvexHull
+from    mpl_toolkits.basemap import Basemap
+import  matplotlib.pyplot as plt
+import  matplotlib.figure as pltfig
+import  numpy as np
+import  sys
+from    pymongo import MongoClient
+import  math
+import  pylab   as P
 from sklearn.cluster import DBSCAN
+from    geojson import MultiPolygon, Feature, Polygon
+import  geojson
 
-class	plotstuff:
-	def	__init__(self):
-		self.client	=MongoClient()
+class   plotstuff:
+    def __init__(self):
+        self.client =MongoClient()
 
-	def	setupDB(self,db,col):
-		self.db		=self.client[db]
-		self.col	=self.db[col]
+    def setupDB(self,db,col):
+        self.db     =self.client[db]
+        self.col    =self.db[col]
 
-	def	queryDB(self):
-		self.docs		=self.col.find({'prediction':{'$exists':True}})
-		self.docsCount	=self.docs.count()
-	
-	def	readCategories(self,filename):
-		self.categories			=[c.split()[0] for c in open(filename).readlines()]
-		self.categoriesCount	=len(self.categories)
+    def queryDB(self):
+        #self.docs      =self.col.find({'prediction':{'$exists':True}})
+        self.docs       =[q for q in self.col.find({'prediction':{'$exists':True}})]
+        self.docsCount  =len(self.docs)
+        print "number of processed images in database:%i"%(self.docsCount)
+        latlon          =[(q['latitude'],q['longitude']) for q in self.docs]
+        lats,lons       =zip(*latlon)
+        self.minlat     =min(lats)
+        self.maxlat     =max(lats)
+        self.minlon     =min(lons)
+        self.maxlon     =max(lons)
+        self.lats       =lats
+        self.lons       =lons
 
-	def	getPredictions(self):
-		coords		=zip(*[(c['longitude'],c['latitude'],c['prediction'],c['_id']) for c in self.docs])
-		self.lons	=map(float,coords[0])
-		self.lats	=map(float,coords[1])
+    
+    def readCategories(self,filename):
+        self.categories         =[c.split()[0] for c in open(filename).readlines()]
+        self.categoriesCount    =len(self.categories)
 
-		self.predictions	=coords[2]
-		self.placesCategories	=np.matrix([[p[cat] for cat in self.categories] for p in self.predictions])
+    def getPredictions(self):
+        coords      =zip(*[(c['longitude'],c['latitude'],c['prediction'],c['_id']) for c in self.docs])
+        self.lons   =map(float,coords[0])
+        self.lats   =map(float,coords[1])
 
-		self.image_id	=map(int,coords[3])
+        self.predictions    =coords[2]
+        self.placesCategories   =np.matrix([[p[cat] for cat in self.categories] for p in self.predictions])
 
-	def	findStrongCorrelations(self,cutoff):
-		a	=[]
-		for i in range(self.categoriesCount):
-			qcorr	=[(self.pcCorrCoeff[i][j],self.categories[j]) for j in range(self.categoriesCount)]
-			qcorr.sort()
-			a.append((self.pcCov[i][i],self.categories[i],[q[1] for q in qcorr[-6:]]))
-		a.sort()
-		self.strongCorrelations	=a
-		
-	def	getSVD(self):
-		self.placesCategoriesBar	=np.mean(self.placesCategories,axis=0)
-		self.pcMpcbar				=np.subtract(self.placesCategories,self.placesCategoriesBar)
-		u,s,v						=np.linalg.svd(self.pcMpcbar,full_matrices=False)
+        self.image_id   =map(int,coords[3])
 
-	def	getCorrelationCoeff(self):
-		self.pcCov				=np.cov(self.placesCategories.T)
-		self.pcCorrCoeff		=np.corrcoef(self.placesCategories.T)
-		self.getSVD()
-		
-	def	getCorrelations(self):
-		self.getCorrelationCoeff()
-		self.findStrongCorrelations(0.1)
+    def findStrongCorrelations(self,cutoff):
+        a   =[]
+        for i in range(self.categoriesCount):
+            qcorr   =[(self.pcCorrCoeff[i][j],self.categories[j]) for j in range(self.categoriesCount)]
+            qcorr.sort()
+            a.append((self.pcCov[i][i],self.categories[i],[q[1] for q in qcorr[-6:]]))
+        a.sort()
+        self.strongCorrelations =a
+        
+    def getSVD(self):
+        self.placesCategoriesBar    =np.mean(self.placesCategories,axis=0)
+        self.pcMpcbar               =np.subtract(self.placesCategories,self.placesCategoriesBar)
+        u,s,v                       =np.linalg.svd(self.pcMpcbar,full_matrices=False)
 
-	def	getMapBoundaries(self,category,pcntl):
-		buf			=5
-		lonrect		=[np.percentile(self.lons,buf),np.percentile(self.lons,100-buf)]
-		latrect		=[np.percentile(self.lats,buf),np.percentile(self.lats,100-buf)]
-		lonrange	=lonrect[1]-lonrect[0]
-		latrange	=latrect[1]-latrect[0]
-		buf			=.5
-		lonrect		=[lonrect[0]-buf*lonrange,lonrect[1]+buf*lonrange]
-		latrect		=[latrect[0]-buf*latrange,latrect[1]+buf*latrange]
-		lon0		=sum(lonrect)/2.0
-		lat0		=sum(latrect)/2.0
+    def getCorrelationCoeff(self):
+        self.pcCov              =np.cov(self.placesCategories.T)
+        self.pcCorrCoeff        =np.corrcoef(self.placesCategories.T)
+        self.getSVD()
+        
+    def getCorrelations(self):
+        self.getCorrelationCoeff()
+        self.findStrongCorrelations(0.1)
 
-		return	{'latrect':latrect, 'lonrect':lonrect, 'lat0':lat0, 'lon0':lon0}
+    def getMapBoundaries(self,category,pcntl):
+        buf         =5
+        lonrect     =[np.percentile(self.lons,buf),np.percentile(self.lons,100-buf)]
+        latrect     =[np.percentile(self.lats,buf),np.percentile(self.lats,100-buf)]
+        lonrange    =lonrect[1]-lonrect[0]
+        latrange    =latrect[1]-latrect[0]
+        buf         =.5
+        lonrect     =[lonrect[0]-buf*lonrange,lonrect[1]+buf*lonrange]
+        latrect     =[latrect[0]-buf*latrange,latrect[1]+buf*latrange]
+        lon0        =sum(lonrect)/2.0
+        lat0        =sum(latrect)/2.0
 
-	def	getCategoryCutoff(self,category,cutoff):
-		docs	=self.col.find({'prediction'+'.'+category :{"$gt": cutoff}})
-		rtn		=[]
-		for doc in docs:
-			rt	={'photo_id':doc['photo_id'], 'longitude':doc['longitude'],'latitude':doc['latitude'],category:doc['prediction'][category]}
-			rtn.append(rt)
-		return	rtn
+        return  {'latrect':latrect, 'lonrect':lonrect, 'lat0':lat0, 'lon0':lon0}
 
-	def	getCategoryClusters(self,category,eps,min_samples,cutoff):
-		data	=self.getCategoryCutoff(category,cutoff)
+    def getCategoryCutoff(self,category,cutoff):
+        docs    =self.col.find({'prediction'+'.'+category :{"$gt": cutoff}})
+        rtn     =[]
+        for doc in docs:
+            rt  ={'photo_id':doc['photo_id'], 'longitude':doc['longitude'],'latitude':doc['latitude'],category:doc['prediction'][category]}
+            rtn.append(rt)
+        return  rtn
 
-		lons		=[ a['longitude'] for a in data]
-		lats		=[ a['latitude']  for a in data]
+    def getCategoryClusters(self,category,eps,min_samples,cutoff):
+        data    =self.getCategoryCutoff(category,cutoff)
 
-		ll			=np.array([[n,t] for n,t in zip(lons,lats)])
-		db			=DBSCAN(eps=eps, min_samples=min_samples).fit(ll)
-		clusterid	=db.labels_
-		clusters	=list(set(clusterid))
-		ret			=dict([(cl,[]) for cl in clusters])
+        lons        =[ a['longitude'] for a in data]
+        lats        =[ a['latitude']  for a in data]
 
-		for cl,d in zip(clusterid,data):
-			ret[cl].append(d)
+        ll          =np.array([[n,t] for n,t in zip(lons,lats)])
+        db          =DBSCAN(eps=eps, min_samples=min_samples).fit(ll)
+        clusterid   =db.labels_
+        clusters    =list(set(clusterid))
+        ret         =dict([(cl,[]) for cl in clusters])
 
-		return	ret
+        for cl,d in zip(clusterid,data):
+            ret[cl].append(d)
 
-	def	getBoundingPolygon(self,category,pcntl,catClust):
-		#boundaryDict	=self.getMapBoundaries(category,pcntl)
-		latrect			=[41.3,41.4]
-		lonrect			=[2.1,2.2]
-		lat0			=41.35
-		lon0			=2.15
-		mapq= Basemap(projection='merc', lat_0 = lat0, lon_0 = lon0,resolution = 'h', area_thresh = 0.1,llcrnrlon=lonrect[0], llcrnrlat=latrect[0], urcrnrlon=lonrect[1], urcrnrlat=latrect[1])
-		mapq.shadedrelief()
-		mapq.drawmapboundary()
-		for k in catClust.keys():
-			points	=np.array([[a['latitude'],a['longitude']] for a in catClust[k]])
-			if k>=0:
-				hull	=ConvexHull(points)
-				print points[:,0].__class__
-				x,y		=mapq(points[:,0],points[:,1])
-				mapq.scatter(x,y,'ro')
-				#plt.plot(points[:,0],points[:,1],'ro')
-				#for simplex in hull.simplices:
-				#	plt.plot(points[simplex,0],points[simplex,1],'r-',lw=3)
-			else:
-				x,y	=mapq(points[:,0],points[:,1])
-				mapq.scatter(x,y,'ro')
-				#plt.plot(points[:,0],points[:,1],'ko')
+        return  ret
 
-		mapq.show()
-		#plt.show()
+    def showBoundingPolygon(self,category,pcntl,catClust):
+        latdelta        =-self.minlat+self.maxlat
+        londelta        =-self.minlon+self.maxlon
+        latrect         =[self.minlat-latdelta,self.maxlat+latdelta]
+        lonrect         =[self.minlon-londelta,self.maxlon+londelta]
+        lat0            =np.mean(latrect)
+        lon0            =np.mean(lonrect)
+        mapq= Basemap(projection='merc', lat_0 = lat0, lon_0 = lon0,resolution = 'h', area_thresh = 0.1,llcrnrlon=lonrect[0], llcrnrlat=latrect[0], urcrnrlon=lonrect[1], urcrnrlat=latrect[1])
+        mapq.shadedrelief()
+        mapq.drawmapboundary()
+        #x,y    =mapq(self.lons,self.lats)
+        #mapq.scatter(x,y,marker='.',color='c')#,alpha=0.1)
+        for k in catClust.keys():
+            points  =np.array([[a['latitude'],a['longitude']] for a in catClust[k]])
+            if k>=0:
+                hull    =ConvexHull(points)
+                x,y     =mapq(points[:,1],points[:,0])
+                hullvert    =list(hull.vertices)
+                hullvert.append(hullvert[0])
+                mapq.plot(x[hullvert],y[hullvert],linewidth=1,color='k')
+                mapq.scatter(x,y,3,marker='o',color='r')
+                print '*'*88
+                for vv in hullvert:
+                    print points[vv,1],points[vv,0]
+            else:
+                x,y =mapq(points[:,0],points[:,1])
+                mapq.scatter(x,y,3,marker='o',color='r')
 
-	def	drawKernelDensityMap(self,numcategories,pcntl):
-		boundaryDict	=self.getMapBoundaries(self.categories[0],1)
-		latrect			=boundaryDict['latrect']
-		lonrect			=boundaryDict['lonrect']
-		lat0			=boundaryDict['lat0']
-		lon0			=boundaryDict['lon0']
+        plt.show()
 
-		X,Y			=np.mgrid[lonrect[0]:lonrect[1]:100j,latrect[0]:latrect[1]:100j]
-		positions	=np.vstack([X.ravel(),Y.ravel()])
+    def getBoundingPolygon(self,catClust):
+        poly    =[]
+        for k in catClust.keys():
+            points  =np.array([[a['latitude'],a['longitude']] for a in catClust[k]])
+            if k>=0:
+                hull    =ConvexHull(points)
+                hullvert    =list(hull.vertices)
+                coords  =[(x,y) for y,x in points[hullvert,:]]
+                poly.append((coords,))
+        outfile = open('test.geojson','w')
+        mp = geojson.dump(MultiPolygon(poly),outfile)
 
-		w,h			=pltfig.figaspect(np.random.randn(3,4))
-		fig,axes	=plt.subplots(nrows=3,ncols=4,figsize=(w,h))
-		i	=0
-		j	=0
-		#for k,category in enumerate(self.categories[-numcategories:]):
-		#for k,covCati in enumerate(self.pcCovSorted[-numcategories:]):
-		for k,covCati in enumerate(self.pcCutoffSorted[-numcategories:]):
-			catindex		=covCati[1]	#self.categories.index(category)
-			category		=self.categories[catindex]
-			catarray		=self.placesCategories[:,catindex]
-			pcntlindex		=catarray>pcntl	#np.percentile(catarray,pcntl)
+    def drawKernelDensityMap(self,numcategories,pcntl):
+        boundaryDict    =self.getMapBoundaries(self.categories[0],1)
+        latrect         =boundaryDict['latrect']
+        lonrect         =boundaryDict['lonrect']
+        lat0            =boundaryDict['lat0']
+        lon0            =boundaryDict['lon0']
 
-			lons		=[ lon for lon,p in zip(self.lons,pcntlindex) if p]
-			lats		=[ lat for lat,p in zip(self.lats,pcntlindex) if p]
+        X,Y         =np.mgrid[lonrect[0]:lonrect[1]:100j,latrect[0]:latrect[1]:100j]
+        positions   =np.vstack([X.ravel(),Y.ravel()])
 
-			ll		=np.array([[n,t] for n,t in zip(lons,lats)])
-			eps		=0.05
-			samples	=3
-			db		=DBSCAN(eps=eps, min_samples=samples).fit(ll)
-			colori	=db.labels_.astype(np.int)
-			numcols	=len(set(colori))
-			colors	=[[(cc>=0)*(1.0-cc/float(1*numcols)),(cc>=0)*(cc/float(1*numcols)+0.0),0] for cc in colori]
+        w,h         =pltfig.figaspect(np.random.randn(3,4))
+        fig,axes    =plt.subplots(nrows=3,ncols=4,figsize=(w,h))
+        i   =0
+        j   =0
+        #for k,category in enumerate(self.categories[-numcategories:]):
+        #for k,covCati in enumerate(self.pcCovSorted[-numcategories:]):
+        for k,covCati in enumerate(self.pcCutoffSorted[-numcategories:]):
+            catindex        =covCati[1] #self.categories.index(category)
+            category        =self.categories[catindex]
+            catarray        =self.placesCategories[:,catindex]
+            pcntlindex      =catarray>pcntl #np.percentile(catarray,pcntl)
 
-			print category,min(lons),max(lons),min(lats),max(lats),numcols
+            lons        =[ lon for lon,p in zip(self.lons,pcntlindex) if p]
+            lats        =[ lat for lat,p in zip(self.lats,pcntlindex) if p]
 
-			values		=np.vstack([lons,lats])
-			kernel		=stats.gaussian_kde(values)
-			Z			=np.reshape(kernel(positions).T,X.shape)
+            ll      =np.array([[n,t] for n,t in zip(lons,lats)])
+            eps     =0.05
+            samples =3
+            db      =DBSCAN(eps=eps, min_samples=samples).fit(ll)
+            colori  =db.labels_.astype(np.int)
+            numcols =len(set(colori))
+            colors  =[[(cc>=0)*(1.0-cc/float(1*numcols)),(cc>=0)*(cc/float(1*numcols)+0.0),0] for cc in colori]
 
-			i	=k/4
-			j	=k%4
-			#axes[i,j].imshow(np.rot90(Z),cmap=plt.cm.gist_earth_r,extent=lonrect+latrect)
-			##axes[i,j].plot(lons,lats,'.',markersize=2,color=colors)
-			axes[i,j].scatter(lons,lats,color=colors,s=7)
-			axes[i,j].set_xlim(lonrect)
-			axes[i,j].set_ylim(latrect)
-			axes[i,j].set_ylabel(category)
-			axes[i,j].imshow(np.rot90(Z),cmap=plt.cm.gist_earth_r,extent=lonrect+latrect)
+            print category,min(lons),max(lons),min(lats),max(lats),numcols
 
-		plt.show()
+            values      =np.vstack([lons,lats])
+            kernel      =stats.gaussian_kde(values)
+            Z           =np.reshape(kernel(positions).T,X.shape)
 
-	def	drawMap(self,category,pcntl):
-		boundaryDict	=self.getMapBoundaries(category,pcntl)
-		latrect			=boundaryDict['latrect']
-		lonrect			=boundaryDict['lonrect']
-		lat0			=boundaryDict['lat0']
-		lon0			=boundaryDict['lon0']
-		
-		mapq= Basemap(projection='merc', lat_0 = lat0, lon_0 = lon0,resolution = 'h', area_thresh = 0.1,llcrnrlon=lonrect[0], llcrnrlat=latrect[0], urcrnrlon=lonrect[1], urcrnrlat=latrect[1])
+            i   =k/4
+            j   =k%4
+            #axes[i,j].imshow(np.rot90(Z),cmap=plt.cm.gist_earth_r,extent=lonrect+latrect)
+            ##axes[i,j].plot(lons,lats,'.',markersize=2,color=colors)
+            axes[i,j].scatter(lons,lats,color=colors,s=7)
+            axes[i,j].set_xlim(lonrect)
+            axes[i,j].set_ylim(latrect)
+            axes[i,j].set_ylabel(category)
+            axes[i,j].imshow(np.rot90(Z),cmap=plt.cm.gist_earth_r,extent=lonrect+latrect)
 
-		catindex	=self.categories.index(category)
-		catarray	=self.placesCategories[:,catindex]
-		pcntlindex	=catarray>np.percentile(catarray,pcntl)
+        plt.show()
 
-		lons		=[ lon for lon,p in zip(self.lons,pcntlindex) if p]
-		lats		=[ lat for lat,p in zip(self.lats,pcntlindex) if p]
-		color		=catarray[pcntlindex]
-		ids			=[ imid for imid,p in zip(self.image_id,pcntlindex) if p]
-		print ids
+    def drawMap(self,category,pcntl):
+        boundaryDict    =self.getMapBoundaries(category,pcntl)
+        latrect         =boundaryDict['latrect']
+        lonrect         =boundaryDict['lonrect']
+        lat0            =boundaryDict['lat0']
+        lon0            =boundaryDict['lon0']
+        
+        mapq= Basemap(projection='merc', lat_0 = lat0, lon_0 = lon0,resolution = 'h', area_thresh = 0.1,llcrnrlon=lonrect[0], llcrnrlat=latrect[0], urcrnrlon=lonrect[1], urcrnrlat=latrect[1])
 
-		#mapq.bluemarble()
-		mapq.shadedrelief()
-		#mapq.drawcoastlines()
-		#mapq.drawcountries()
-		#mapq.fillcontinents(color = 'coral')
-		mapq.drawmapboundary()
-		x,y		=mapq(lons,lats)
-		color	=np.array(color)
-		mapq.scatter(x,y,c=color)
-		plt.show()
+        catindex    =self.categories.index(category)
+        catarray    =self.placesCategories[:,catindex]
+        pcntlindex  =catarray>np.percentile(catarray,pcntl)
 
-	def	calcTopCategories(self,cutoff):
-		self.rankings		={}
-		self.pcCovSorted	=[(float(self.pcCov[i][i]),i) for i in range(self.pcCov.shape[0])]
-		self.pcCovSorted.sort()
+        lons        =[ lon for lon,p in zip(self.lons,pcntlindex) if p]
+        lats        =[ lat for lat,p in zip(self.lats,pcntlindex) if p]
+        color       =catarray[pcntlindex]
+        ids         =[ imid for imid,p in zip(self.image_id,pcntlindex) if p]
+        print ids
 
-		a	=(self.placesCategories>cutoff)
-		a	=sum(np.multiply(self.placesCategories,a)).tolist()[0]
+        #mapq.bluemarble()
+        mapq.shadedrelief()
+        #mapq.drawcoastlines()
+        #mapq.drawcountries()
+        #mapq.fillcontinents(color = 'coral')
+        mapq.drawmapboundary()
+        x,y     =mapq(lons,lats)
+        color   =np.array(color)
+        mapq.scatter(x,y,c=color)
+        plt.show()
 
-		a	=[(float(a[i]),i) for i in range(len(a))]
-		a.sort()
-		self.pcCutoffSorted	=a
-		for i in self.pcCutoffSorted:
-			print i[0],self.categories[i[1]]
+    def calcTopCategories(self,cutoff):
+        self.rankings       ={}
+        self.pcCovSorted    =[(float(self.pcCov[i][i]),i) for i in range(self.pcCov.shape[0])]
+        self.pcCovSorted.sort()
+
+        a   =(self.placesCategories>cutoff)
+        a   =sum(np.multiply(self.placesCategories,a)).tolist()[0]
+
+        a   =[(float(a[i]),i) for i in range(len(a))]
+        a.sort()
+        self.pcCutoffSorted =a
+        for i in self.pcCutoffSorted:
+            print i[0],self.categories[i[1]]
 
 
-	def	showTopResults(self,numCategories):
-		#	get highest rated categories
-		self.pcCovSorted	=[(float(self.pcCov[i][i]),i) for i in range(self.pcCov.shape[0])]
-		self.pcCovSorted.sort()
-		for i in self.pcCovSorted[-numCategories:]:
-			j	=self.categories[i[1]]
-			print j
-			x	=self.placesCategories[:,i[1]]
-			n,bins,patches	=P.hist(np.log10(x),50,normed=1,histtype='stepfilled')
-			P.setp(patches,'facecolor','g','alpha',0.75)
-			P.title(j)
-			P.figure()
-		P.show()
-		
+    def showTopResults(self,numCategories):
+        #   get highest rated categories
+        self.pcCovSorted    =[(float(self.pcCov[i][i]),i) for i in range(self.pcCov.shape[0])]
+        self.pcCovSorted.sort()
+        for i in self.pcCovSorted[-numCategories:]:
+            j   =self.categories[i[1]]
+            print j
+            x   =self.placesCategories[:,i[1]]
+            n,bins,patches  =P.hist(np.log10(x),50,normed=1,histtype='stepfilled')
+            P.setp(patches,'facecolor','g','alpha',0.75)
+            P.title(j)
+            P.figure()
+        P.show()
+        
 
-db			='geo'
-col			='panoramio_barcelona'
-col			='panoramio_popular'
-categoriesfile	='../../caffe/models/placesCNN/categoryIndex_places205.csv'
-category	='/c/cathedral/outdoor'
-category	='/a/airport_terminal'
-category	='/t/train_railway'
-category	='/o/office_building'
-category	='/o/ocean'
-category	='/b/basilica'
-category	='/m/mountain'
-cutoff		=0.3
+db          ='geo'
+col         ='panoramio_barcelona'
+col         ='panoramio_popular'
+col         ='Singapore'
+col         ='San Marino'
+col         ='Monaco'
+col         ='Liechtenstein'
 
-a	=plotstuff()
-a.setupDB(db,col)
-a.queryDB()
-#a.readCategories(categoriesfile)
-#a.getPredictions()
-#a.getCorrelations()
-#a.drawMap(category,99.5)
-#a.calcTopCategories(.5)
-#a.drawKernelDensityMap(12,0.5)
-#a.showTopResults(20)
-b	=a.getCategoryClusters(category,0.05,3,cutoff)
-a.getBoundingPolygon(category,cutoff,b)
-category	='/o/ocean'
-b	=a.getCategoryClusters(category,0.05,3,cutoff)
-a.getBoundingPolygon(category,cutoff,b)
+categoriesfile  ='../../caffe/models/placesCNN/categoryIndex_places205.csv'
+category    ='/c/cathedral/outdoor'
+category    ='/a/airport_terminal'
+category    ='/t/train_railway'
+category    ='/o/ocean'
+category    ='/b/basilica'
+category    ='/m/mountain'
+category    ='/o/office_building'
+cutoff      =0.01
+categories  =[\
+'/c/chalet',\
+'/c/cathedral/outdoor',\
+'/m/mountain',\
+'/c/canyon',\
+'/b/basilica',\
+'/o/office_building',\
+'/c/coast',\
+'/f/fountain',\
+]
+
+col =sys.argv[1].decode('utf-8')
+if 1:
+    a   =plotstuff()
+    a.setupDB(db,col)
+    a.queryDB()
+    for category in categories[:1]:
+        print category
+        b   =a.getCategoryClusters(category,0.001,5,cutoff)
+        #a.showBoundingPolygon(category,cutoff,b)
+        a.getBoundingPolygon(b)
+else:
+    col ='panoramio_popular'
+    a   =plotstuff()
+    a.setupDB(db,col)
+    

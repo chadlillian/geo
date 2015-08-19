@@ -1,0 +1,40 @@
+Traceback (most recent call last):
+  File "./placescan", line 120, in <module>
+    co.predictMongoDB()
+  File "./placescan", line 92, in predictMongoDB
+    self.monitor.update({'value':i,'application':'X'})
+  File "/home/chad/projects/geo/dashboard.py", line 19, in update
+    requests.get(self.url+args)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/api.py", line 69, in get
+    return request('get', url, params=params, **kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/api.py", line 50, in request
+    response = session.request(method=method, url=url, **kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/sessions.py", line 465, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/sessions.py", line 573, in send
+    r = adapter.send(request, **kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/adapters.py", line 415, in send
+    raise ConnectionError(err, request=request)
+requests.exceptions.ConnectionError: ('Connection aborted.', gaierror(-2, 'Name or service not known'))
+
+#################################################
+
+Traceback (most recent call last):
+  File "./placescan", line 123, in <module>
+    co.predictMongoDB()
+  File "./placescan", line 95, in predictMongoDB
+    self.monitor.update({'value':i,'application':'X'})
+  File "/home/chad/projects/geo/dashboard.py", line 19, in update
+    requests.get(self.url+args)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/api.py", line 69, in get
+    return request('get', url, params=params, **kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/api.py", line 50, in request
+    response = session.request(method=method, url=url, **kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/sessions.py", line 465, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/sessions.py", line 573, in send
+    r = adapter.send(request, **kwargs)
+  File "/home/chad/anaconda/lib/python2.7/site-packages/requests/adapters.py", line 415, in send
+    raise ConnectionError(err, request=request)
+requests.exceptions.ConnectionError: ('Connection aborted.', error(101, 'Network is unreachable'))
+

@@ -1,0 +1,104 @@
+#!/home/chad/anaconda/bin/python
+import	numpy as np
+import	matplotlib.pyplot as plt
+import	sys
+import	urllib2
+import	urllib
+import	json
+import	pickle
+import	random
+import	time
+
+def	getJsonRectangle(minx,miny,maxx,maxy):
+	rest	='http://www.panoramio.com/map/get_panoramas.php?set=full&size=original&from=%i&to=%i&minx=%f&miny=%f&maxx=%f&maxy=%f'
+	r1		=rest%(1,2,minx,miny,maxx,maxy)
+	f		=urllib2.urlopen(r1).read()
+	a		=json.loads(f)
+	count	=a['count']
+	segmentsize	=100
+
+	photos	=[]
+	numsegments	=count/segmentsize
+	hasmore	=True
+	#for i in range(numsegments):
+	i	=0
+	while hasmore:
+		start	=segmentsize*i
+		end		=segmentsize*(i+1)
+		r	=rest%(start,end,minx,miny,maxx,maxy)
+		f	=urllib2.urlopen(r).read()
+		a	=json.loads(f)
+
+		photos.extend(a['photos'])
+		#print i,numsegments,len(a['photos']),a['count'],start,end
+		hasmore	=a['has_more']
+		i	=i+1
+
+	return	photos
+	
+
+def	getPhotos(photos,directory):
+	N	=len(photos)
+	for i,p in enumerate(photos):
+		pid		=p['photo_id']
+		ext		=p['photo_file_url'].split('.')[-1]
+		url		=p['photo_file_url']
+		name	='%s/%i.%s'%(directory,pid,ext)
+
+		urllib.urlretrieve(url,name)
+		print i,url
+
+def	printcsv(photos,filename):
+	out	=open(filename,'w')
+	for p in photos:
+		print>>out, p['latitude'],p['longitude'],p['photo_id'],p['photo_file_url']
+	out.close()
+	
+def	picklePhotos(photos,filename):
+	pickle.dump(photos,open(filename,'wb'))
+
+def	multipleRectangles(minx,miny,maxx,maxy,filename):
+	#photos	=getJsonRectangle(minx,miny,maxx,maxy)
+	#photourls	=dict([(p['photo_id'],p) for p in photos])
+	photourls	={}
+
+	xfrac	=0.05
+	xincr	=0.025
+	xn		=int((1-xfrac)/xincr)+1
+	frmt	='%3i %3i '+'['+'%5.3f '*4+']'+'['+'%5.3f '*4+']'+'%7i '+'%7i %5.3f %5.3f'
+	start	=time.time()
+	for xi in range(xn):
+		for yi in range(xn):
+			rminx	=(0+xi)*xincr*(maxx-minx)+minx
+			rmaxx	=xfrac*(maxx-minx)+rminx
+
+			rminy	=(0+yi)*xincr*(maxy-miny)+miny
+			rmaxy	=xfrac*(maxy-miny)+rminy
+
+			rphotos		=getJsonRectangle(rminx,rminy,rmaxx,rmaxy)
+			rphotourls	=dict([(p['photo_id'],p) for p in rphotos])
+			prev	=len(photourls)
+			photourls.update(rphotourls)
+			now		=len(photourls)
+			if len(rphotos):
+				pcntg	=float(now-prev)/len(rphotos)
+			else:
+				pcntg	=0
+			elapsed	=time.time()-start
+			start	=time.time()
+			print frmt%(xi,yi,rminx,rmaxx,rminy,rmaxy,minx,maxx,miny,maxy,len(rphotos),len(photourls),pcntg,elapsed)
+	
+	out	=open(filename,'w')
+	for k in photourls.keys():
+		p	=photourls[k]
+		print>>out, p['latitude'],p['longitude'],p['photo_id'],p['photo_file_url']
+	out.close()
+		
+
+multipleRectangles(-18,34,36,66,'europe2.csv')
+#multipleRectangles(-2,42,12,48,'test3.csv')
+#tdf17	=getJsonRectangle(-2,42,12,48)
+#europe	=getJsonRectangle(-18,34,36,66)
+#printcsv(europe,'europe.csv')
+#getPhotos(europe,'images')
+#picklePhotos(europe,'images.p')
