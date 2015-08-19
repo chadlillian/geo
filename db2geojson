@@ -1,0 +1,161 @@
+#!/home/chad/anaconda/bin/python
+from    scipy   import  stats
+from    scipy.spatial import ConvexHull
+from    mpl_toolkits.basemap import Basemap
+import  matplotlib.pyplot as plt
+import  matplotlib.figure as pltfig
+import  numpy as np
+import  sys
+from    pymongo import MongoClient
+import  math
+import  pylab   as P
+from sklearn.cluster import DBSCAN
+from    geojson import MultiPolygon, Feature, Polygon
+import  geojson
+from	sklearn.decomposition	import	PCA
+
+class   plotstuff:
+    def __init__(self):
+        self.client =MongoClient()
+
+    def setupDB(self,db,cols):
+        self.db     =self.client[db]
+        #self.col    =self.db[col]
+        self.cols = [self.db[col] for col in cols]
+
+    def getCategoryCutoff(self,category,cutoff):
+        #docs    =self.col.find({'prediction'+'.'+category :{"$gt": cutoff}})
+        rtn     =[]
+        for col in self.cols:
+            docs = col.find({'prediction'+'.'+category :{"$gt": cutoff}})
+            for doc in docs:
+                rt  ={'photo_id':doc['photo_id'], 'longitude':doc['longitude'],'latitude':doc['latitude'],category:doc['prediction'][category]}
+                rtn.append(rt)
+        return  rtn
+
+    # given a category this finds clusters using the DBSCAN algorithm
+    # returns a dictionary with 
+    #   index:cluster number
+    #   value:list of dictionares (dictionaries given by getCategoryCutoff)
+    def getCategoryClusters(self,category,eps,min_samples,cutoff):
+        data = self.getCategoryCutoff(category,cutoff)
+        self.category = category
+
+        lons        =[ a['longitude'] for a in data]
+        lats        =[ a['latitude']  for a in data]
+
+        ll          =np.array([[n,t] for n,t in zip(lons,lats)])
+        db          =DBSCAN(eps=eps, min_samples=min_samples).fit(ll)
+        clusterid   =db.labels_
+        clusters    =list(set(clusterid))
+        ret         =dict([(cl,[]) for cl in clusters])
+
+        for cl,d in zip(clusterid,data):
+            ret[cl].append(d)
+
+        self.clusters = ret
+
+    # make convex hulls for each of the clusters
+    def getCategoryPolygons(self):
+        catClust = self.clusters
+        poly    =[]
+        for k in catClust.keys():
+            points  =np.array([[a['longitude'],a['latitude']] for a in catClust[k]])
+            if k>=0 and points.shape[0]>2:
+                hull    =ConvexHull(points)
+                hullvert    =list(hull.vertices)
+                coords  =[(x,y) for x,y in points[hullvert,:]]
+                poly.append((coords,))
+        mp = MultiPolygon(poly)
+        self.category_multipolygon = mp
+
+    def writeFeature(self,style,properties):
+        #st = { "weight": 2, "color": "#999", "opacity": 0, "fillColor": "#FF0000", "fillOpacity": 0.3 }
+        #pr = {"name":self.category, "popupContent":self.category,"style":st}
+        ##pr = {"name":self.category, "popupContent":self.category}
+
+        ft = Feature(geometry=self.category_multipolygon, properties=pr)
+        #outfile = open('test.geojson','w')
+        #mp = geojson.dump(ft,outfile)
+        #outfile.close()
+
+    def makeFeatureCollection(self,categories,cutoff,eps,min_samples,outfilename):
+        self.featureCollection = {'features':[]}
+        n = len(categories)-1
+        for i,category in enumerate(categories):
+            print category
+            self.getCategoryClusters(category,eps,min_samples,cutoff)
+            self.getCategoryPolygons()
+            red = hex(int(float(i*255)/n))+'0'
+            green = "00"
+            blue = hex(int(float((n-i)*255)/n))+'0'
+            color = "#"+red[2:4]+green+blue[2:4]
+            print color,red,green,blue
+            st = { "weight": 2, "color": "#999", "opacity": 0, "fillColor": color, "fillOpacity": 0.3 }
+            st = { "weight": 2, "color": color, "opacity": 0, "fillColor": color, "fillOpacity": 0.3 }
+            pr = {"name":category, "popupContent":category,"style":st}
+            #pr = {"name":category, "popupContent":category}
+            ft = Feature(geometry=self.category_multipolygon, properties=pr)
+            self.featureCollection['features'].append(ft)
+        outfile = open(outfilename,'w')
+        print>>outfile, "var data = "
+        geojson.dump(self.featureCollection,outfile)
+        #geojson.dump(ft,outfile)
+        outfile.close()
+
+    def pca(self,categories):
+        pca_matrix = []
+        latlon = []
+        for col in self.cols:
+            docs = col.find({'prediction':{"$ne": 0}},timeout=False)
+            for i,doc in enumerate(docs):
+#                rt  ={'photo_id':doc['photo_id'], 'longitude':doc['longitude'],'latitude':doc['latitude'],category:doc['prediction'][category]}
+                pca_row = [doc['prediction'][cat] for cat in categories]
+                ll_row = {'longitude':doc['longitude'],'latitude':doc['latitude']}
+                pca_matrix.append(pca_row)
+                latlon.append(ll_row)
+        
+        pca_matrix = np.asarray(pca_matrix)
+        pca = PCA(n_components=len(categories))
+        pca.fit(pca_matrix)
+        print pca.explained_variance_ratio_
+
+db          ='geo'
+col         ='panoramio_barcelona'
+col         ='panoramio_popular'
+col         ='Singapore'
+col         ='San Marino'
+col         ='Monaco'
+col         ='Liechtenstein'
+
+categoriesfile  ='../../caffe/models/placesCNN/categoryIndex_places205.csv'
+categories  =[\
+'/m/mountain',\
+'/s/shopfront',\
+'/r/ruin',\
+'/r/river',\
+'/c/coast',\
+'/r/restaurant_patio',\
+'/r/restaurant',\
+'/f/fountain',\
+'/s/ski_resort',\
+'/c/chalet',\
+'/c/canyon',\
+'/c/cathedral/outdoor',\
+'/s/supermarket',\
+'/o/office_building',\
+'/b/basilica',\
+'/o/office_building',\
+]
+
+cols =[a.decode('utf-8') for a in sys.argv[1:]]
+print cols
+cutoff = 0.02
+eps = 0.005
+min_samples = 5
+outfilename = 'sample-geojson.js'
+
+a = plotstuff()
+a.setupDB(db,cols)
+#a.makeFeatureCollection(categories,cutoff,eps,min_samples,outfilename)
+a.pca(categories)

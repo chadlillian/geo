@@ -1,15 +1,21 @@
 #!/home/chad/anaconda/bin/python
 import	numpy as np
 import	matplotlib.pyplot as plt
-import	sys
 import	urllib2
 import	urllib
 import	json
 from pymongo import MongoClient
+import	kmlUtil		as kmlu
+import	dashboard	as dash
+import	sys
+reload(sys)
+sys.setdefaultencoding('utf-8')
 
 class	panoramioQuery:
 	def	__init__(self):
 		self.segmentsize	=100
+		self.monitor		=dash.dashboard()
+		#self.monitor.setURL('http://localhost:8080/')
 	
 	def	setRectangle(self,mins,maxs,segsLon,segsLat):
 		self.minLat		=mins[0]
@@ -53,7 +59,6 @@ class	panoramioQuery:
 			i	=i+1
 	
 		return	photos
-		
 	
 	def	query(self):
 		photourls	={}
@@ -84,10 +89,76 @@ class	panoramioQuery:
 	
 				print frmt%(xi,yi,self.minLat,self.minLon,self.maxLat,self.maxLon,rminLat,rminLon,rmaxLat,rmaxLon,len(rphotos),self.col.count())
 		
+	def	setTiles(self,kfilename,qry):
+		self.kmlfile	=kmlu.kmlUtil()
+		self.kmlfile.readKML(kfilename,qry)
+		res	=1
+		eps_simp	=np.power(10.0,-res)
+		self.kmlfile.simplifyBoundaries(eps_simp,eps_simp)
+		self.Tiles	=self.kmlfile.getAllTiles(res)
+		self.KMLColName	=self.kmlfile.getName()
+	
+	def	addPhotos(self,photos):
+		[x.update({'_id':x['photo_id']}) for x in photos]
+		numadded	=0
+		for photo in photos:
+			try:
+				self.col.insert(photo)
+				numadded	=numadded+1
+			except: 
+				pass
+
+		N	=self.col.count()
+		self.monitor.update({'value':N,'application':'X'})
+		return	numadded
+		
+	def	subsetTile(self,lats,lons,numlevels,quadarray):
+		rminLat		=lats[0]
+		rminLon		=lons[0]
+		rmaxLat		=lats[1]
+		rmaxLon		=lons[1]
+
+		rmidLat		=(rmaxLat+rminLat)/2.0
+		rmidLon		=(rmaxLon+rminLon)/2.0
+
+		if numlevels>0:
+			rphotos	=self.getJsonRectangle([rminLat,rminLon],[rmaxLat,rmaxLon])
+			na		=self.addPhotos(rphotos)
+			print numlevels,len(rphotos),na,[rminLat,rmaxLat],[rminLon,rmaxLon],quadarray
+			if na:
+				self.subsetTile([rminLat,rmidLat],[rminLon,rmidLon],numlevels-1,quadarray+[0])
+				self.subsetTile([rmidLat,rmaxLat],[rminLon,rmidLon],numlevels-1,quadarray+[1])
+				self.subsetTile([rminLat,rmidLat],[rmidLon,rmaxLon],numlevels-1,quadarray+[2])
+				self.subsetTile([rmidLat,rmaxLat],[rmidLon,rmaxLon],numlevels-1,quadarray+[3])
+		
+	def	queryKML(self,db):
+		self.client	=MongoClient()
+		self.db		=self.client[db]
+		if self.KMLColName in self.db.collection_names():
+			self.db.drop_collection(self.KMLColName)
+		self.col	=self.db[self.KMLColName]
+
+		for k,tile in enumerate(self.Tiles):
+			rminLat		=tile['lowerleft'][1]
+			rminLon		=tile['lowerleft'][0]
+			rmaxLat		=tile['upperright'][1]
+			rmaxLon		=tile['upperright'][0]
+			print '*'*88
+			print '%i/%i'%(k,len(self.Tiles))
+			self.subsetTile([rminLat,rmaxLat],[rminLon,rmaxLon],6,[0])
+
+filename	=sys.argv[1]	#.decode('utf-8')
+qry			=sys.argv[2]
 pdb	=panoramioQuery()
-#pdb.setRectangle(-12,34,44,72,50,50)
-#pdb.setRectangle([34,-12],[72,44],50,50)
-pdb.setRectangle([41.3,2.1],[41.4,2.2],2,2)
-pdb.setDatabase('geo','panoramio_barcelona')
-pdb.query()
-#multipleRectangles(-2,42,12,48,'test3.csv')
+if 0:
+	#pdb.setRectangle(-12,34,44,72,50,50)
+	#pdb.setRectangle([34,-12],[72,44],50,50)
+	pdb.setRectangle([41.3,2.1],[41.4,2.2],2,2)
+	pdb.setDatabase('geo','panoramio_barcelona')
+	pdb.query()
+	#multipleRectangles(-2,42,12,48,'test3.csv')
+
+else:
+	pdb.setTiles(filename,qry)
+#	pdb.setDatabase('geo',filename)
+	pdb.queryKML('geo')

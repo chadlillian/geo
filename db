@@ -1,0 +1,35 @@
+#!/home/chad/anaconda/bin/python
+from 	pymongo import MongoClient
+import	requests
+import	caffe
+from skimage import io; io.use_plugin('matplotlib')
+
+client	=MongoClient()
+
+db		=client['geo']
+cols	=db.collection_names()
+for col in cols:
+	q	=db[col].count()
+	print col,q
+
+#col	=db['Liechtenstein']
+#a	=col.find({'prediction':{'$exists':False}},timeout=False)
+#b	=col.find({'prediction':{'$exists':True}},timeout=False)
+#
+#for aa in a:
+#	print  aa['photo_file_url']
+
+#for bb in b[:10]:
+#	print bb['photo_file_url']
+#lons	=[1.8167470000000003, 2.6507189999999996]
+#lats	=[41.025885149999993, 42.23757775]
+#
+#
+#search	={'$or': [{'longitude':{'$lt':lons[0]}},{'longitude':{'$gt':lons[1]}}, {'latitude':{'$lt':lats[0]}},{'latitude':{'$gt':lats[1]}}] }
+#a	=col.find(search)
+#print a.count()
+#col.remove(search)
+#print a.count()
+#print col.find().count()
+#
+#
