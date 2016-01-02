@@ -16,7 +16,8 @@ class MainPage(webapp2.RequestHandler):
 
 class   Data(webapp2.RequestHandler):
     def get(self):
-        dd   =open('sample-geojson.js').read()
+        dd   =open('sample-geojson-poly.js').read()
+        #dd   =open('sample-geojson-cluster2.js').read()
         self.response.out.write(dd)
 
 app = webapp2.WSGIApplication(  [('/', MainPage),
