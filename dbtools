@@ -1,0 +1,42 @@
+#!/home/chad/anaconda/bin/python
+from 	pymongo import MongoClient
+import	requests
+import	caffe
+from skimage import io; io.use_plugin('matplotlib')
+import  sys
+
+client = MongoClient()
+client2 = MongoClient()
+
+def getCollections():
+    db		=client['geo']
+    cols	=[col for col in db.collection_names() if col.find("Provence")>0]
+    for col in cols:
+        if len(col.split('_'))==2:
+            big = col
+            
+    cols.remove(big)
+
+    return cols,big
+
+
+def moveToBigCollection(big,small):
+    ss = small.split('_')[-1]
+    bigcol = client['geo'][big]
+    smallcol = client2['geo'][small]
+
+    a = smallcol.find({'prediction':{'$exists':True}},timeout=False)
+    al = a.count()
+
+    for i,aa in enumerate(a):
+        photoid = aa['photo_id']
+        c = bigcol.find({'_id':photoid},timeout=False)
+
+        if c.count():
+            print i,al, photoid, ss,c[0]['_id']
+            bigcol.update({'_id':c[0]['_id']},{'$set':{'prediction':aa['prediction']}})
+
+cols,big = getCollections()
+for col in cols:
+    moveToBigCollection(big,col)
+

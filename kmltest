@@ -1,0 +1,26 @@
+#!/home/chad/anaconda/bin/python
+
+import  os
+import  sys
+import  zipfile
+import  codecs
+import  xml.etree.ElementTree as ET
+
+sys.stdout  =codecs.getwriter('utf-8')(sys.stdout)
+def openKML(kmlfile):
+    if os.path.splitext(kmlfile)[1]=='.kmz':
+        kmlfile     =zipfile.ZipFile(kmlfile)
+        kmlfilename =kmlfile.namelist()[0]
+        coordfile   =kmlfile.read(kmlfilename)
+    else:
+        coordfile   =open(kmlfile).read()
+    
+    kmlfile    =coordfile
+    root = ET.fromstring(kmlfile)
+
+    prefix = root.tag.split('}')[0]+'}'
+
+    for n in root.iter(prefix+'Placemark'):
+        print n
+
+openKML(sys.argv[1])
