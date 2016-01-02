@@ -3,21 +3,43 @@ from 	pymongo import MongoClient
 import	requests
 import	caffe
 from skimage import io; io.use_plugin('matplotlib')
+import  sys
 
 client	=MongoClient()
 
-db		=client['geo']
-cols	=db.collection_names()
-for col in cols:
-	q	=db[col].count()
-	print col,q
+def find_photo_id(id):
+    db		=client['geo']
+    cols	=db.collection_names()
+    for col in cols:
+    	q	=db[col].count()
+        a = db[col].find({'photo_id':id})
+        for aa in a:
+            print '*'*88
+    	    print col,q
+            print aa
+
+def getCollections():
+    db		=client['geo']
+    cols	=db.collection_names()
+    for col in cols:
+        a = db[col].find({'prediction':{'$exists':False}},timeout=False)
+        b = db[col].find({'prediction':{'$exists':True}},timeout=False)
+        #c = db[col].find({'latitude':{'$exists':True}},timeout=False)
+        #d = db[col].find({'photo_url':{'$exists':True}},timeout=False)
+        #q = db[col].find({'photo_url':{'$exists':False}},timeout=False)
+        #print col,db[col].count()
+        print col,a.count(),b.count()
+
+#find_photo_id(int(sys.argv[1]))
+getCollections()
 
 #col	=db['Liechtenstein']
 #a	=col.find({'prediction':{'$exists':False}},timeout=False)
 #b	=col.find({'prediction':{'$exists':True}},timeout=False)
 #
-#for aa in a:
-#	print  aa['photo_file_url']
+#
+#for aa in b[:5]:
+#	print  aa
 
 #for bb in b[:10]:
 #	print bb['photo_file_url']
