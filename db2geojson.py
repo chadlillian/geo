@@ -99,7 +99,6 @@ class   plotstuff:
                     
     def clusterCoordinates(self,eps,min_samples):
         r = self.dbscan(self.coordinates,self.predictions,eps,min_samples)
-        #r = self.optics(self.coordinates,self.predictions,100,min_samples)
         rks = r['data_active'].keys()
         rks.sort()
         x = []
@@ -112,8 +111,8 @@ class   plotstuff:
         polygons = []
 
         for cl in rks[1:]:
-            coords = np.array([a.tolist() for a in r['data_active'][cl]])
-            preds = np.array([a.tolist() for a in r['data_inert'][cl]])
+            coords = np.array(r['data_active'][cl])
+            preds = np.array(r['data_inert'][cl])
 
             predictions.append(np.max(preds,0))
             center = np.mean(coords,0)
@@ -131,7 +130,7 @@ class   plotstuff:
             try:
                 polygon = [alphashape.alpha_shape_wrapper(coords[:,(1,0)],50.0),]
             except:
-                n = 4
+                n = 9
                 polygon = [[[center[1]+radius[1]*np.cos(i*3.1415/n),center[0]+radius[0]*np.sin(i*3.1415/n)] for i in range(n)]]
             polygons.append(polygon)
 
@@ -320,7 +319,7 @@ class   plotstuff:
         ret = {'data_active':da, 'data_inert':di}
         return ret
         
-    # data_c is data to cluster, data_ is data corresponding data not to be used for clustering
+    # data_active is data to cluster, data_inert is data corresponding data_active but not to be used for clustering
     def dbscan(self,data_active,data_inert,eps,min_samples):
         db = DBSCAN(eps=eps, min_samples=min_samples).fit(data_active)
         clusterid = db.labels_

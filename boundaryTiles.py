@@ -127,12 +127,13 @@ if __name__=="__main__":
 
     b = sftest.shapeFileReader()
     d = b.open(file_name,place_name)
+    dd = b.getBoundaries()
 
     res =1
     eps_simp    =np.power(10.0,-res)
 
     c = boundaryTiles()
-    c.setPoints(place_name,d)
+    c.setPoints(place_name,dd)
     c.simplifyBoundaries(eps_simp,1.0*eps_simp)
     c.getAllTiles(res)
     c.plotTiles()

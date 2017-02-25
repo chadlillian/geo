@@ -61,7 +61,7 @@ class shapeFileReader:
     
             shapes = sf.shapes()
             records = sf.records()
-            fieldsindices = [j-1 for j,f in enumerate(sf.fields) if f[0].lower().find('name_')==0 and f[0].split('_')[1].isdigit()]
+            fieldsindices = [j-1 for j,f in enumerate(sf.fields) if (f[0].lower().find('name_')==0 and f[0].split('_')[1].isdigit()) or f[0].lower()=='iso']
             for shape,record in zip(shapes,records):
                 names = [record[j].decode('utf-8') for j in fieldsindices]
                 keyname = names[-1]#.decode('utf-8')
