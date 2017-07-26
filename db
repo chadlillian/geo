@@ -1,7 +1,7 @@
 #!/home/chad/anaconda/bin/python
 from 	pymongo import MongoClient
 import	requests
-import	caffe
+#import	caffe
 from skimage import io; io.use_plugin('matplotlib')
 import  sys
 
@@ -22,12 +22,14 @@ def getCollections():
     db		=client['geo']
     cols	=db.collection_names()
     for col in cols:
-        a = db[col].find({'prediction':{'$exists':False}},timeout=False)
-        b = db[col].find({'prediction':{'$exists':True}},timeout=False)
+        a = db[col].find({'prediction':{'$exists':False}})#,timeout=False)
+        b = db[col].find({'prediction':{'$exists':True}})#,timeout=False)
+
         #c = db[col].find({'latitude':{'$exists':True}},timeout=False)
         #d = db[col].find({'photo_url':{'$exists':True}},timeout=False)
         #q = db[col].find({'photo_url':{'$exists':False}},timeout=False)
         #print col,db[col].count()
+
         print col,a.count(),b.count()
 
 #find_photo_id(int(sys.argv[1]))

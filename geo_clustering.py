@@ -58,6 +58,7 @@ class   clustering:
         qqq = self.arrayToRGB(pca[:,0:3])
         model = TSNE(n_components=2,random_state=0)
         tsne = model.fit_transform(pca)
+
         plt.scatter(tsne[:,0],tsne[:,1],c=qqq,edgecolors='none')
         plt.show()
 

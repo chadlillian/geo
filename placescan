@@ -1,4 +1,6 @@
 #!/home/chad/anaconda/bin/python
+
+# get all photo id's from mongodb, then run the urls through the CNN and populate mongodb with category scores
 import  numpy as np
 import  matplotlib.pyplot as plt
 import  sys
@@ -42,8 +44,8 @@ class caffeExec:
 
         self.models             ={'placesCNN':{'model':pcnn_MODEL_FILE, 'pretrained':pcnn_PRETRAINED, 'len':pcnn_length, 'categories':pcnn_CATEGORIES},
                                   'hybridCNN':{'model':hcnn_MODEL_FILE, 'pretrained':hcnn_PRETRAINED, 'len':hcnn_length, 'categories':hcnn_CATEGORIES}}
-        self.client =MongoClient()
-        self.monitor    =dash.dashboard()
+        self.client = MongoClient()
+        self.monitor = dash.dashboard()
         #self.monitor.setURL('http://localhost:8080/')
         self.monitor.reset()
 
@@ -58,7 +60,9 @@ class caffeExec:
         
         numpymean   =np.load(self.caffe_root + 'python/caffe/imagenet/ilsvrc_2012_mean.npy').mean(1).mean(1)
         caffe.set_mode_cpu()
+        print("before load"*50)
         self.net        =caffe.Classifier(MODEL_FILE, PRETRAINED, mean=numpymean, channel_swap=(2,1,0), raw_scale=255, image_dims=(256, 256))
+        print("after load"*50)
 
         self.db         =self.client[database]
         self.collection =self.db[collection]
@@ -71,32 +75,33 @@ class caffeExec:
         number  =self.images.count()
         for i,image in enumerate(self.images):
             start   =datetime.datetime.now()
-            try:
-                signal.signal(signal.SIGALRM,handler)
-                signal.alarm(300)
+            if image['height']*image['width']<9300*9300:
+                try:
+                    signal.signal(signal.SIGALRM,handler)
+                    signal.alarm(300)
 
-                caffeImages         =[caffe.io.load_image(image['photo_file_url']) ]
+                    caffeImages         =[caffe.io.load_image(image['photo_file_url']) ]
 
-                signal.alarm(0)
-                prediction          =self.net.predict(caffeImages)[0].tolist()
-                prediction          =dict(zip(self.categories,prediction))
-                start2  =datetime.datetime.now()
+                    signal.alarm(0)
+                    prediction          =self.net.predict(caffeImages)[0].tolist()
+                    prediction          =dict(zip(self.categories,prediction))
+                    start2  =datetime.datetime.now()
 
-                a       =self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
-                sf['predict']   =sf['predict']+1
-            except:
-                a       =self.collection.update({'_id':image['_id']},{"$set":{'prediction':0}})
-                sf['fail']  =sf['fail']+1
+                    a       =self.collection.update({'_id':image['_id']},{"$set":{'prediction':prediction}})
+                    sf['predict']   =sf['predict']+1
+                except:
+                    a       =self.collection.update({'_id':image['_id']},{"$set":{'prediction':0}})
+                    sf['fail']  =sf['fail']+1
 
-            end =datetime.datetime.now()
-            elaptime    =end-start
-            elaptime    =elaptime.seconds+elaptime.microseconds*1e-6
+                end =datetime.datetime.now()
+                elaptime    =end-start
+                elaptime    =elaptime.seconds+elaptime.microseconds*1e-6
 
-            try:
-                print '%5i/%5i %80s predict %5i fail %5i [%s %f]'%tuple([i,number,image['photo_file_url'],sf['predict'],sf['fail'],start.strftime('%X'),elaptime])
-                self.monitor.update({'value':i,'application':'X'})
-            except:
-                print image
+                try:
+                    print '%5i/%5i %80s predict %5i fail %5i [%s %f]'%tuple([i,number,image['photo_file_url'],sf['predict'],sf['fail'],start.strftime('%X'),elaptime])
+                    self.monitor.update({'value':i,'application':'X'})
+                except:
+                    print image
 
     def scanImages(self):
         for i,image in enumerate(self.images):
